@@ -1,0 +1,10 @@
+[run]
+omit =
+    */tests/*
+    */local_server.py
+    */seed.py
+    */seed_realistic_acme.py
+    */performance_test.py
+
+[report]
+show_missing = True

@@ -111,3 +111,106 @@ We'd love to hear your feedback! Please:
 * 🐛 Report issues on GitHub
 * 💡 Suggest improvements
 * 📝 Share your experience
+
+<!-- ACME_PROJECT_SECTION_START -->
+
+## ACME Workplace Incident Management
+
+This repository contains the ACME Workplace full-stack implementation for the Citi Coding Workshop.
+
+### Personas
+
+- **Employee** - reports and tracks workplace incidents
+- **Engineer** - manages assigned incident work
+- **Facility Admin** - manages facilities, engineers, assignments, escalations, and reporting
+
+### Architecture
+
+```text
+React + Material UI
+        |
+        v
+Python AWS Lambda application
+        |
+        v
+PostgreSQL
+```
+
+Local development uses `backend/acme-api/local_server.py`. Cloud deployment uses Citi-provided Lambda, Aurora/RDS, S3, CloudFront, and Terraform tooling.
+
+### Main capabilities
+
+- JWT authentication and refresh
+- bcrypt password hashing
+- backend-enforced RBAC
+- incident CRUD
+- facility hierarchy management
+- engineer and skill management
+- assignment and workflow transitions
+- blocked reasons and escalation
+- notes and history
+- search/filtering
+- responsive DataGrid/mobile UI
+- dashboard metrics/charts
+- 30-second dashboard refresh
+- PWA support
+- unit, integration, component, E2E, and load testing
+
+### Local run
+
+Backend:
+
+```bash
+cd backend/acme-api
+source ../../.venv/bin/activate
+python local_server.py
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+### Validation
+
+```bash
+# Backend
+cd backend/acme-api
+python -m pytest --cov=. --cov-config=.coveragerc --cov-report=term-missing
+
+# Frontend
+cd ../../frontend
+npm test -- --run --coverage
+npm run build
+npm run e2e
+```
+
+Latest verified local evidence:
+
+- Backend: **58 tests passed, 84% coverage**
+- Frontend: **43 tests passed**
+- Frontend coverage: **95.65% statements**
+- Cypress: **1/1 critical workflow passing**
+- Performance: **100/100 requests successful**, ~**324.74 req/s**, **29.94 ms mean latency**
+- Production build: **passed**
+
+### Documentation
+
+- [`docs/ACME_ARCHITECTURE.md`](docs/ACME_ARCHITECTURE.md)
+- [`docs/ACME_REQUIREMENTS_MATRIX.md`](docs/ACME_REQUIREMENTS_MATRIX.md)
+- [`docs/ACME_TEST_EVIDENCE.md`](docs/ACME_TEST_EVIDENCE.md)
+
+### Trade-off
+
+AI integration is not enabled because no approved AI provider credentials were supplied. Core incident workflows remain provider-independent.
+
+AWS deployment is complete and verified: the CloudFront frontend, Lambda API, Aurora database readiness, authentication, dashboard integration, and CloudWatch Lambda runtime logs were validated in the Citi workshop environment.
+
+<!-- ACME_PROJECT_SECTION_END -->
+
+
+## ACME Cloud Deployment
+
+For the Citi workshop AWS deployment procedure, see [`docs/ACME_CLOUD_DEPLOYMENT.md`](docs/ACME_CLOUD_DEPLOYMENT.md).
