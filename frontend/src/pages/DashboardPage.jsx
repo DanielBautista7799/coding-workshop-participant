@@ -340,6 +340,7 @@ function DashboardPage() {
           title="Total Incidents"
           value={
             summary.total
+            ?? summary.total_assigned
             ?? dashboard?.total_incidents
             ?? dashboard?.assigned_incidents
             ?? 0

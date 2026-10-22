@@ -102,10 +102,15 @@ def _get_engineer_dashboard(user_id: int) -> dict:
                 ) AS blocked,
                 COUNT(*) FILTER (
                     WHERE status = 'RESOLVED'
-                ) AS resolved
+                ) AS resolved,
+                COUNT(*) FILTER (
+                    WHERE status = 'CLOSED'
+                ) AS closed,
+                COUNT(*) FILTER (
+                    WHERE escalation_status IN ('PENDING', 'APPROVED')
+                ) AS escalated
             FROM incidents
-            WHERE engineer_id = %s
-            AND status != 'CLOSED';
+            WHERE engineer_id = %s;
             """,
             (engineer["id"],),
         )
