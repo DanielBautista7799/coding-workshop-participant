@@ -5,21 +5,15 @@
 html {
   min-width: 320px;
   min-height: 100%;
-  background: #f5f7fb;
+  background: #eef0ef;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(
-      circle at 100% 0%,
-      rgba(23, 78, 166, 0.055),
-      transparent 26rem
-    ),
-    #f5f7fb;
-  color: #172033;
+  background: #eef0ef;
+  color: #1c2329;
   font-family:
     Inter,
     -apple-system,
@@ -50,7 +44,7 @@ a {
 }
 
 ::selection {
-  background: rgba(23, 78, 166, 0.18);
+  background: rgba(15, 92, 99, 0.2);
 }
 
 ::-webkit-scrollbar {
@@ -63,14 +57,14 @@ a {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c6cfdd;
+  background: #c4cccb;
   border: 2px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9eabbd;
+  background: #9aa5a4;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
