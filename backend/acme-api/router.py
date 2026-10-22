@@ -559,6 +559,7 @@ def route_request(event: dict) -> dict:
                     priority=query.get("priority"),
                     category=query.get("category"),
                     search=query.get("search"),
+                    escalation=query.get("escalation"),
                 )
 
                 return json_response(

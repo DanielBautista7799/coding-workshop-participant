@@ -17,6 +17,54 @@ Typography,
 import { useAuth } from '../context/useAuth'
 
 
+// These rules match the backend checks in auth.py.
+const NAME_PATTERN = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ' .-]*$/
+const EMAIL_PATTERN = /^[a-z0-9._%+-]+@acme\.inc$/
+
+const PASSWORD_HINT =
+'At least 8 characters, with a letter and a number.'
+
+
+function validateRegistration(fullName, email, password) {
+const errors = {}
+
+const cleanName = fullName.trim().replace(/\s+/g, ' ')
+const cleanEmail = email.trim().toLowerCase()
+
+if (!cleanName) {
+errors.fullName = 'Full name is required.'
+} else if (cleanName.length < 2 || cleanName.length > 100) {
+errors.fullName =
+    'Full name must be between 2 and 100 characters.'
+} else if (!NAME_PATTERN.test(cleanName)) {
+errors.fullName =
+    'Use letters, spaces, hyphens, apostrophes, or periods.'
+}
+
+if (!cleanEmail) {
+errors.email = 'Email is required.'
+} else if (!cleanEmail.endsWith('@acme.inc')) {
+errors.email = 'Registration requires an @acme.inc email address.'
+} else if (!EMAIL_PATTERN.test(cleanEmail)) {
+errors.email = 'Enter a valid email address, like name@acme.inc.'
+}
+
+if (!password) {
+errors.password = 'Password is required.'
+} else if (password.length < 8) {
+errors.password = 'Password must be at least 8 characters.'
+} else if (password.length > 128) {
+errors.password = 'Password must be at most 128 characters.'
+} else if (!/[A-Za-z]/.test(password)) {
+errors.password = 'Password must include at least one letter.'
+} else if (!/\d/.test(password)) {
+errors.password = 'Password must include at least one number.'
+}
+
+return errors
+}
+
+
 function LoginPage() {
 const {
 login,
@@ -30,6 +78,10 @@ const [fullName, setFullName] = useState('')
 const [email, setEmail] = useState('')
 const [password, setPassword] = useState('')
 
+// A field shows its error once the user leaves it, or after a submit attempt.
+const [touched, setTouched] = useState({})
+const [submitAttempted, setSubmitAttempted] = useState(false)
+
 const [error, setError] = useState('')
 const [loading, setLoading] = useState(false)
 
@@ -39,17 +91,49 @@ return <Navigate to="/" replace />
 }
 
 
+const isRegister = mode === 'register'
+
+const fieldErrors = isRegister
+? validateRegistration(fullName, email, password)
+: {}
+
+
+function showError(field) {
+return Boolean(
+    fieldErrors[field]
+    && (submitAttempted || touched[field]),
+)
+}
+
+
+function markTouched(field) {
+setTouched((current) => ({
+    ...current,
+    [field]: true,
+}))
+}
+
+
 async function handleSubmit(event) {
 event.preventDefault()
 
 setError('')
+
+if (isRegister) {
+    setSubmitAttempted(true)
+
+    if (Object.keys(fieldErrors).length > 0) {
+    return
+    }
+}
+
 setLoading(true)
 
 try {
-    if (mode === 'register') {
+    if (isRegister) {
     await register(
-        fullName,
-        email,
+        fullName.trim().replace(/\s+/g, ' '),
+        email.trim().toLowerCase(),
         password,
     )
     } else {
@@ -103,6 +187,8 @@ return (
         onChange={(_, value) => {
             setMode(value)
             setError('')
+            setTouched({})
+            setSubmitAttempted(false)
         }}
         variant="fullWidth"
         sx={{ mb: 3 }}
@@ -130,17 +216,26 @@ return (
         <Box
         component="form"
         onSubmit={handleSubmit}
+        noValidate={isRegister}
         >
-        {mode === 'register' && (
+        {isRegister && (
             <TextField
             label="Full Name"
             value={fullName}
             onChange={(event) =>
                 setFullName(event.target.value)
             }
+            onBlur={() => markTouched('fullName')}
+            error={showError('fullName')}
+            helperText={
+                showError('fullName')
+                ? fieldErrors.fullName
+                : ' '
+            }
             required
             fullWidth
-            sx={{ mb: 2 }}
+            autoComplete="name"
+            sx={{ mb: 1 }}
             />
         )}
 
@@ -151,10 +246,18 @@ return (
             onChange={(event) =>
             setEmail(event.target.value)
             }
+            onBlur={() => markTouched('email')}
+            error={showError('email')}
+            helperText={
+            isRegister
+                ? (showError('email') ? fieldErrors.email : ' ')
+                : undefined
+            }
             placeholder="name@acme.inc"
             required
             fullWidth
-            sx={{ mb: 2 }}
+            autoComplete="email"
+            sx={{ mb: isRegister ? 1 : 2 }}
         />
 
         <TextField
@@ -164,11 +267,24 @@ return (
             onChange={(event) =>
             setPassword(event.target.value)
             }
+            onBlur={() => markTouched('password')}
+            error={showError('password')}
+            helperText={
+            isRegister
+                ? (showError('password')
+                ? fieldErrors.password
+                : PASSWORD_HINT)
+                : undefined
+            }
             required
             fullWidth
             sx={{ mb: 3 }}
-        
-            autoComplete="current-password"/>
+            autoComplete={
+            isRegister
+                ? 'new-password'
+                : 'current-password'
+            }
+        />
 
         <Button
             type="submit"
@@ -178,7 +294,7 @@ return (
         >
             {loading
             ? <CircularProgress size={24} />
-            : mode === 'register'
+            : isRegister
                 ? 'Create Account'
                 : 'Login'}
         </Button>

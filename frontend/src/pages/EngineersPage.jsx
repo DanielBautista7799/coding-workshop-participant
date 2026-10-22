@@ -3,7 +3,12 @@ useEffect,
 useState,
 } from 'react'
 
+import { Link as RouterLink } from 'react-router-dom'
+
 import {
+Accordion,
+AccordionDetails,
+AccordionSummary,
 Alert,
 Autocomplete,
 Box,
@@ -13,23 +18,78 @@ CardContent,
 Chip,
 Divider,
 IconButton,
+Link,
 TextField,
 Typography,
 } from '@mui/material'
 
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
 import { apiRequest } from '../services/api'
 
 
 const MAX_SKILLS = 8
 
+// Active work first, finished work last.
+const STATUS_ORDER = {
+BLOCKED: 0,
+IN_PROGRESS: 1,
+OPEN: 2,
+RESOLVED: 3,
+CLOSED: 4,
+}
+
+const STATUS_COLORS = {
+OPEN: 'info',
+IN_PROGRESS: 'warning',
+BLOCKED: 'error',
+RESOLVED: 'success',
+CLOSED: 'default',
+}
+
+const STATUS_LABELS = {
+OPEN: 'Open',
+IN_PROGRESS: 'In Progress',
+BLOCKED: 'Blocked',
+RESOLVED: 'Resolved',
+CLOSED: 'Closed',
+}
+
+
+function groupIncidentsByEngineer(incidents) {
+const grouped = {}
+
+incidents.forEach((incident) => {
+    if (incident.engineer_id == null) {
+    return
+    }
+
+    if (!grouped[incident.engineer_id]) {
+    grouped[incident.engineer_id] = []
+    }
+
+    grouped[incident.engineer_id].push(incident)
+})
+
+Object.values(grouped).forEach((list) => {
+    list.sort(
+    (a, b) =>
+        (STATUS_ORDER[a.status] ?? 99)
+        - (STATUS_ORDER[b.status] ?? 99),
+    )
+})
+
+return grouped
+}
+
 
 function EngineersPage() {
 const [engineers, setEngineers] = useState([])
 const [skillOptions, setSkillOptions] = useState([])
 const [engineerSkills, setEngineerSkills] = useState({})
+const [engineerIncidents, setEngineerIncidents] = useState({})
 
 const [fullName, setFullName] = useState('')
 const [email, setEmail] = useState('')
@@ -57,10 +117,12 @@ async function loadEngineers() {
         engineerData,
         skillData,
         engineerSkillData,
+        incidentData,
     ] = await Promise.all([
         apiRequest('/engineers'),
         apiRequest('/skills'),
         apiRequest('/engineer-skills'),
+        apiRequest('/incidents'),
     ])
 
     setEngineers(engineerData)
@@ -77,6 +139,12 @@ async function loadEngineers() {
     })
 
     setEngineerSkills(groupedSkills)
+
+    setEngineerIncidents(
+        groupIncidentsByEngineer(
+        Array.isArray(incidentData) ? incidentData : [],
+        ),
+    )
     } catch (err) {
     setError(err.message)
     }
@@ -183,6 +251,7 @@ async function toggleEngineer(engineer) {
         method: 'PUT',
         body: JSON.stringify({
             full_name: engineer.full_name,
+            email: engineer.email,
             specialty: engineer.specialty,
             is_active: !engineer.is_active,
         }),
@@ -226,6 +295,102 @@ async function deleteEngineer(engineerId) {
 }
 
 
+function renderAssignedIncidents(engineer) {
+    const assigned =
+    engineerIncidents[engineer.id] || []
+
+    return (
+    <Accordion
+        disableGutters
+        elevation={0}
+        sx={{
+        mt: 2,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        '&::before': { display: 'none' },
+        }}
+    >
+        <AccordionSummary
+        expandIcon={<ExpandMoreIcon />}
+        aria-controls={`engineer-${engineer.id}-incidents`}
+        id={`engineer-${engineer.id}-incidents-header`}
+        >
+        <Typography fontWeight={600}>
+            Assigned incidents ({assigned.length})
+        </Typography>
+        </AccordionSummary>
+
+        <AccordionDetails
+        id={`engineer-${engineer.id}-incidents`}
+        sx={{ pt: 0 }}
+        >
+        {assigned.length === 0 ? (
+            <Typography
+            variant="body2"
+            color="text.secondary"
+            >
+            No incidents assigned yet.
+            </Typography>
+        ) : (
+            assigned.map((incident, index) => (
+            <Box key={incident.id}>
+                {index > 0 && <Divider />}
+
+                <Box
+                sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 1,
+                    py: 1,
+                }}
+                >
+                <Box sx={{ minWidth: 0 }}>
+                    <Link
+                    component={RouterLink}
+                    to={`/incidents/${incident.id}`}
+                    underline="hover"
+                    sx={{
+                        display: 'block',
+                        overflowWrap: 'anywhere',
+                    }}
+                    >
+                    #{incident.id} {incident.title}
+                    </Link>
+
+                    <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    >
+                    {incident.building_name}
+                    {incident.priority
+                        ? ` / ${incident.priority} priority`
+                        : ''}
+                    </Typography>
+                </Box>
+
+                <Chip
+                    size="small"
+                    label={
+                    STATUS_LABELS[incident.status]
+                    || incident.status
+                    }
+                    color={
+                    STATUS_COLORS[incident.status]
+                    || 'default'
+                    }
+                />
+                </Box>
+            </Box>
+            ))
+        )}
+        </AccordionDetails>
+    </Accordion>
+    )
+}
+
+
 return (
     <Box>
     <Typography
@@ -240,7 +405,7 @@ return (
         sx={{ mb: 3 }}
     >
         Manage facility engineer accounts,
-        specialties, skills, and availability.
+        specialties, skills, availability, and assigned work.
     </Typography>
 
     {error && (
@@ -401,128 +566,130 @@ return (
             engineerSkills[engineer.id] || []
 
         return (
-        <Card key={engineer.id}>
+            <Card key={engineer.id}>
             <CardContent>
-            <Box
+                <Box
                 sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 2,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 2,
                 }}
-            >
+                >
                 <Box sx={{ minWidth: 0 }}>
-                <Typography
+                    <Typography
                     variant="h6"
                     gutterBottom
-                >
+                    >
                     {engineer.full_name}
-                </Typography>
+                    </Typography>
 
-                <Typography
+                    <Typography
                     color="text.secondary"
                     sx={{
-                    overflowWrap: 'anywhere',
+                        overflowWrap: 'anywhere',
                     }}
-                >
+                    >
                     {engineer.email}
-                </Typography>
+                    </Typography>
 
-                <Typography sx={{ mt: 1 }}>
+                    <Typography sx={{ mt: 1 }}>
                     Specialty:{' '}
                     {engineer.specialty || 'Not set'}
-                </Typography>
+                    </Typography>
 
-                <Typography>
+                    <Typography>
                     Active Incidents:{' '}
                     {engineer.active_incidents || 0}
-                </Typography>
+                    </Typography>
 
-                <Typography
+                    <Typography
                     fontWeight={600}
                     sx={{ mt: 1.5, mb: 0.75 }}
-                >
+                    >
                     Skills
-                </Typography>
+                    </Typography>
 
-                <Box
+                    <Box
                     sx={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 0.75,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 0.75,
                     }}
-                >
+                    >
                     {skills.length > 0 ? (
-                    skills.map((skill) => (
+                        skills.map((skill) => (
                         <Chip
-                        key={skill}
-                        label={skill}
-                        size="small"
-                        variant="outlined"
+                            key={skill}
+                            label={skill}
+                            size="small"
+                            variant="outlined"
                         />
-                    ))
+                        ))
                     ) : (
-                    <Typography
+                        <Typography
                         variant="body2"
                         color="text.secondary"
-                    >
+                        >
                         No skills assigned
-                    </Typography>
+                        </Typography>
                     )}
-                </Box>
+                    </Box>
 
-                <Chip
+                    <Chip
                     label={
-                    engineer.is_active
+                        engineer.is_active
                         ? 'ACTIVE'
                         : 'INACTIVE'
                     }
                     color={
-                    engineer.is_active
+                        engineer.is_active
                         ? 'success'
                         : 'default'
                     }
                     size="small"
                     sx={{ mt: 2 }}
-                />
+                    />
                 </Box>
 
                 <Box>
-                <IconButton
+                    <IconButton
                     aria-label={`Edit ${engineer.full_name}`}
                     onClick={() =>
-                    editEngineer(engineer)
+                        editEngineer(engineer)
                     }
-                >
+                    >
                     <EditIcon />
-                </IconButton>
+                    </IconButton>
 
-                <IconButton
+                    <IconButton
                     aria-label={`Delete ${engineer.full_name}`}
                     color="error"
                     onClick={() =>
-                    deleteEngineer(engineer.id)
+                        deleteEngineer(engineer.id)
                     }
-                >
+                    >
                     <DeleteIcon />
-                </IconButton>
+                    </IconButton>
                 </Box>
-            </Box>
+                </Box>
 
-            <Divider sx={{ my: 2 }} />
+                {renderAssignedIncidents(engineer)}
 
-            <Button
+                <Divider sx={{ my: 2 }} />
+
+                <Button
                 variant="outlined"
                 fullWidth
                 onClick={() =>
-                toggleEngineer(engineer)
+                    toggleEngineer(engineer)
                 }
-            >
+                >
                 {engineer.is_active
-                ? 'Deactivate'
-                : 'Activate'}
-            </Button>
+                    ? 'Deactivate'
+                    : 'Activate'}
+                </Button>
             </CardContent>
-        </Card>
+            </Card>
         )
         })}
     </Box>

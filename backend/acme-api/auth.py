@@ -1,5 +1,7 @@
 """Authentication and user registration logic."""
 
+import re
+
 from psycopg.errors import UniqueViolation
 
 from postgres_service import get_connection
@@ -12,18 +14,68 @@ from security import (
 )
 
 
+# Letters (including accented letters), spaces, hyphens, apostrophes, periods.
+NAME_PATTERN = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ' .-]*$")
+
+# Simple local part followed by the company domain.
+EMAIL_PATTERN = re.compile(r"^[a-z0-9._%+-]+@acme\.inc$")
+
+NAME_MIN_LENGTH = 2
+NAME_MAX_LENGTH = 100
+EMAIL_MAX_LENGTH = 254
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+
+
+def _validate_full_name(full_name: str) -> str:
+    """Clean up and validate a person's full name."""
+    # Collapse repeated spaces: "  Jane   Doe " -> "Jane Doe"
+    full_name = " ".join(full_name.split())
+
+    if not full_name:
+        raise ValueError("Full name is required.")
+
+    if not NAME_MIN_LENGTH <= len(full_name) <= NAME_MAX_LENGTH:
+        raise ValueError(
+            f"Full name must be between {NAME_MIN_LENGTH} "
+            f"and {NAME_MAX_LENGTH} characters."
+        )
+
+    if not NAME_PATTERN.match(full_name):
+        raise ValueError(
+            "Full name can only contain letters, spaces, "
+            "hyphens, apostrophes, and periods."
+        )
+
+    return full_name
+
+
 def _validate_email(email: str) -> str:
+    """Validate an ACME company email address."""
     email = email.strip().lower()
 
     if not email.endswith("@acme.inc"):
         raise ValueError("Registration requires an @acme.inc email address.")
 
+    if len(email) > EMAIL_MAX_LENGTH or not EMAIL_PATTERN.match(email):
+        raise ValueError("Enter a valid email address, like name@acme.inc.")
+
     return email
 
 
 def _validate_password(password: str) -> None:
-    if len(password) < 8:
+    """Check password length and that it mixes letters and numbers."""
+    if len(password) < PASSWORD_MIN_LENGTH:
         raise ValueError("Password must be at least 8 characters.")
+
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise ValueError("Password must be at most 128 characters.")
+
+    if not any(character.isalpha() for character in password):
+        raise ValueError("Password must include at least one letter.")
+
+    if not any(character.isdigit() for character in password):
+        raise ValueError("Password must include at least one number.")
 
 
 def register_user(data: dict) -> dict:
@@ -41,6 +93,7 @@ def register_user(data: dict) -> dict:
     if not password:
         raise ValueError("Password is required.")
 
+    full_name = _validate_full_name(full_name)
     email = _validate_email(email)
     _validate_password(password)
 

@@ -1,6 +1,6 @@
-"""Handles the full incident workflow and permissions: employees create/manage their own incidents,
-request escalation, add notes, and close resolved tickets; engineers manage assigned incidents and notes; 
-admins can view/manage all incidents, assign engineers, review escalations, and manage notes/history."""
+"""Handles the full incident workflow and permissions: employees and engineers can report incidents
+and manage the ones they reported; engineers also manage incidents assigned to them; admins can
+view/manage all incidents, assign engineers, review escalations, and manage notes/history."""
 
 from engineers import get_engineer
 from facilities import get_seat
@@ -16,6 +16,14 @@ VALID_STATUSES = {
     "BLOCKED",
     "RESOLVED",
     "CLOSED",
+}
+
+# ACTIVE means any escalation that still needs attention (PENDING or APPROVED).
+VALID_ESCALATION_FILTERS = {
+    "ACTIVE",
+    "PENDING",
+    "APPROVED",
+    "DECLINED",
 }
 
 
@@ -50,16 +58,33 @@ def _required_id(data: dict, field: str) -> int:
         ) from exc
 
 
+def _is_reporter(user: dict, incident: dict) -> bool:
+    """Check whether the user reported this incident."""
+    return incident["reporter_id"] == user["id"]
+
+
+def _is_assigned_engineer(user: dict, incident: dict) -> bool:
+    """Check whether the user is the engineer assigned to this incident."""
+    return (
+        is_engineer(user)
+        and incident["engineer_user_id"] == user["id"]
+    )
+
+
 def _can_view_incident(user: dict, incident: dict) -> bool:
     """Check whether a user can view an incident."""
     if is_admin(user):
         return True
 
     if is_employee(user):
-        return incident["reporter_id"] == user["id"]
+        return _is_reporter(user, incident)
 
     if is_engineer(user):
-        return incident["engineer_user_id"] == user["id"]
+        # Engineers see incidents assigned to them and incidents they reported.
+        return (
+            _is_assigned_engineer(user, incident)
+            or _is_reporter(user, incident)
+        )
 
     return False
 
@@ -73,6 +98,7 @@ def list_incidents(
     priority: str | None = None,
     category: str | None = None,
     search: str | None = None,
+    escalation: str | None = None,
 ) -> list:
     """Return incidents visible to the current user with optional filters."""
     connection = get_connection()
@@ -130,14 +156,18 @@ def list_incidents(
         values.append(user["id"])
 
     elif is_engineer(user):
+        # Assigned to this engineer OR reported by this engineer.
         query += """
-            AND incidents.engineer_id = (
-                SELECT id
-                FROM engineer_profiles
-                WHERE user_id = %s
+            AND (
+                incidents.engineer_id = (
+                    SELECT id
+                    FROM engineer_profiles
+                    WHERE user_id = %s
+                )
+                OR incidents.reporter_id = %s
             )
         """
-        values.append(user["id"])
+        values.extend([user["id"], user["id"]])
 
     elif not is_admin(user):
         raise PermissionError("You do not have permission to view incidents.")
@@ -163,6 +193,20 @@ def list_incidents(
     if category:
         query += " AND LOWER(incidents.category) = LOWER(%s)"
         values.append(category.strip())
+
+    if escalation:
+        escalation = escalation.strip().upper()
+
+        if escalation not in VALID_ESCALATION_FILTERS:
+            raise ValueError("Invalid escalation filter.")
+
+        if escalation == "ACTIVE":
+            query += """
+                AND incidents.escalation_status IN ('PENDING', 'APPROVED')
+            """
+        else:
+            query += " AND incidents.escalation_status = %s"
+            values.append(escalation)
 
     if search:
         search_value = f"%{search.strip()}%"
@@ -264,10 +308,10 @@ def get_incident(incident_id: int, user: dict) -> dict:
 
 
 def create_incident(data: dict, user: dict) -> dict:
-    """Create an incident for the logged-in employee."""
-    if not is_employee(user):
+    """Create an incident reported by the logged-in employee or engineer."""
+    if not (is_employee(user) or is_engineer(user)):
         raise PermissionError(
-            "Only employees can report new incidents."
+            "Only employees and engineers can report new incidents."
         )
 
     title = _required_text(data, "title")
@@ -349,18 +393,22 @@ def update_incident(
         user,
     )
 
-    if is_employee(user):
-        if current["reporter_id"] != user["id"]:
-            raise PermissionError(
-                "You can only edit your own incidents."
-            )
+    if is_admin(user):
+        pass
 
+    elif _is_reporter(user, current):
+        # Whoever reported it (employee or engineer) can edit it while it is open.
         if current["status"] != "OPEN":
             raise PermissionError(
-                "An employee can only edit an incident while it is open."
+                "An incident can only be edited by its reporter while it is open."
             )
 
-    elif not is_admin(user):
+    elif is_employee(user):
+        raise PermissionError(
+            "You can only edit your own incidents."
+        )
+
+    else:
         raise PermissionError(
             "You do not have permission to edit this incident."
         )
@@ -446,21 +494,25 @@ def delete_incident(
         user,
     )
 
-    if is_employee(user):
-        if incident["reporter_id"] != user["id"]:
-            raise PermissionError(
-                "You can only delete your own incidents."
-            )
+    if is_admin(user):
+        pass
 
+    elif _is_reporter(user, incident):
+        # Reporters can only delete an incident nobody has started on yet.
         if (
             incident["status"] != "OPEN"
             or incident["engineer_id"] is not None
         ):
             raise PermissionError(
-                "An employee can only delete an open, unassigned incident."
+                "You can only delete an open, unassigned incident."
             )
 
-    elif not is_admin(user):
+    elif is_employee(user):
+        raise PermissionError(
+            "You can only delete your own incidents."
+        )
+
+    else:
         raise PermissionError(
             "You do not have permission to delete this incident."
         )
@@ -560,20 +612,33 @@ def update_incident_status(
 
     current_status = incident["status"]
 
-    # Employees are only allowed to close their own resolved incident.
-    if is_employee(user):
+    is_reporter = _is_reporter(user, incident)
+    is_assigned_engineer = _is_assigned_engineer(user, incident)
+
+    # Reporters (employees, or engineers who reported but are not assigned)
+    # are only allowed to close their own resolved incident.
+    if is_employee(user) or (
+        is_engineer(user)
+        and is_reporter
+        and not is_assigned_engineer
+    ):
         if (
-            incident["reporter_id"] != user["id"]
+            not is_reporter
             or current_status != "RESOLVED"
             or new_status != "CLOSED"
         ):
+            if is_employee(user):
+                raise PermissionError(
+                    "Employees can only close their own resolved incidents."
+                )
+
             raise PermissionError(
-                "Employees can only close their own resolved incidents."
+                "You can only close incidents you reported once they are resolved."
             )
 
     else:
         if is_engineer(user):
-            if incident["engineer_user_id"] != user["id"]:
+            if not is_assigned_engineer:
                 raise PermissionError(
                     "Engineers can only update incidents assigned to them."
                 )

@@ -382,21 +382,37 @@ const nextStatuses =
 const isAdmin =
     user.role === 'FACILITY_ADMIN'
 
-const isEmployeeOwner =
-    user.role === 'EMPLOYEE'
+// The person who reported this incident (an employee OR an engineer).
+const isReporter =
+    !isAdmin
     && incident.reporter_id === user.id
+
+// The engineer currently assigned to work this incident.
+const isAssignedEngineer =
+    user.role === 'ENGINEER'
+    && incident.engineer_user_id === user.id
+
+// Only the assigned engineer or an admin moves the workflow forward.
+const canUpdateStatus =
+    (isAdmin || isAssignedEngineer)
+    && nextStatuses.length > 0
+
+// The reporter closes their own incident once it is resolved.
+const canClose =
+    isReporter
+    && incident.status === 'RESOLVED'
 
 const canEdit =
     isAdmin
     || (
-    isEmployeeOwner
+    isReporter
     && incident.status === 'OPEN'
     )
 
 const canDelete =
     isAdmin
     || (
-    isEmployeeOwner
+    isReporter
     && incident.status === 'OPEN'
     && !incident.engineer_id
     )
@@ -682,7 +698,7 @@ return (
         <Box>
 
         {/* ADMIN ASSIGNMENT */}
-        {user.role === 'FACILITY_ADMIN' && (
+        {isAdmin && (
             <Card sx={{ mb: 3 }}>
             <CardContent>
                 <Typography
@@ -752,110 +768,105 @@ return (
         )}
 
 
-        {/* ENGINEER / ADMIN STATUS */}
-        {(user.role === 'ENGINEER'
-            || user.role === 'FACILITY_ADMIN')
-            && nextStatuses.length > 0
-            && (
+        {/* ASSIGNED ENGINEER / ADMIN STATUS */}
+        {canUpdateStatus && (
             <Card sx={{ mb: 3 }}>
-                <CardContent>
+            <CardContent>
                 <Typography
-                    variant="h6"
-                    gutterBottom
+                variant="h6"
+                gutterBottom
                 >
-                    Update Status
+                Update Status
                 </Typography>
 
                 <TextField
-                    select
-                    label="New Status"
+                select
+                label="New Status"
                 data-cy="incident-status"
-                    value={newStatus}
-                    onChange={(event) =>
+                value={newStatus}
+                onChange={(event) =>
                     setNewStatus(
-                        event.target.value,
+                    event.target.value,
                     )
-                    }
-                    fullWidth
-                    sx={{ mb: 2 }}
+                }
+                fullWidth
+                sx={{ mb: 2 }}
                 >
-                    {nextStatuses.map(
+                {nextStatuses.map(
                     (status) => (
-                        <MenuItem
+                    <MenuItem
                         key={status}
                         value={status}
-                        >
+                    >
                         {status.replace(
-                            '_',
-                            ' ',
+                        '_',
+                        ' ',
                         )}
-                        </MenuItem>
+                    </MenuItem>
                     ),
-                    )}
+                )}
                 </TextField>
 
                 {newStatus === 'BLOCKED' && (
-                    <TextField
+                <TextField
                     label="Blocked Reason"
                     value={blockedReason}
                     onChange={(event) =>
-                        setBlockedReason(
+                    setBlockedReason(
                         event.target.value,
-                        )
+                    )
                     }
                     required
                     multiline
                     fullWidth
                     sx={{ mb: 2 }}
-                    />
+                />
                 )}
 
                 <Button
-                    fullWidth
-                    disabled={
+                fullWidth
+                disabled={
                     !newStatus
                     || (
-                        newStatus === 'BLOCKED'
-                        && !blockedReason.trim()
+                    newStatus === 'BLOCKED'
+                    && !blockedReason.trim()
                     )
-                    }
-                    onClick={() =>
+                }
+                onClick={() =>
                     updateStatus(
-                        newStatus,
+                    newStatus,
                     )
-                    }
+                }
                 >
-                    Update Status
+                Update Status
                 </Button>
-                </CardContent>
+            </CardContent>
             </Card>
-            )}
+        )}
 
 
-        {/* EMPLOYEE CLOSE */}
-        {user.role === 'EMPLOYEE'
-            && incident.status === 'RESOLVED'
-            && (
+        {/* REPORTER CLOSE (employee or engineer who reported it) */}
+        {canClose && (
             <Card sx={{ mb: 3 }}>
-                <CardContent>
+            <CardContent>
                 <Typography
-                    variant="h6"
-                    gutterBottom
+                variant="h6"
+                gutterBottom
                 >
-                    Resolution
+                Resolution
                 </Typography>
 
                 <Button
-                    fullWidth
-                    onClick={() =>
+                fullWidth
+                onClick={() =>
                     updateStatus('CLOSED')
-                    }
+                }
                 >
-                    Close Incident
+                Close Incident
                 </Button>
-                </CardContent>
+            </CardContent>
             </Card>
-            )}
+        )}
 
 
         {/* EMPLOYEE ESCALATION */}
@@ -902,7 +913,7 @@ return (
 
 
         {/* ADMIN ESCALATION REVIEW */}
-        {user.role === 'FACILITY_ADMIN'
+        {isAdmin
             && incident.escalation_status
             === 'PENDING'
             && (
