@@ -2,7 +2,7 @@ const PASSWORD = "AcmeDemo123!"
 
 
 function login(email) {
-  cy.visit("/#/login")
+  cy.visit("/login")
 
   cy.get("input[type=email]")
     .should("be.visible")
@@ -32,9 +32,9 @@ function logout() {
     .should("be.visible")
     .click()
 
-  cy.location("hash", {
+  cy.location("pathname", {
     timeout: 10000,
-  }).should("eq", "#/login")
+  }).should("eq", "/login")
 }
 
 
@@ -46,9 +46,9 @@ function openIncidents() {
     .should("be.visible")
     .click()
 
-  cy.location("hash", {
+  cy.location("pathname", {
     timeout: 10000,
-  }).should("eq", "#/incidents")
+  }).should("eq", "/incidents")
 }
 
 
